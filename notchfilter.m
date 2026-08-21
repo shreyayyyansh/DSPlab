@@ -1,3 +1,5 @@
+//Notch filter implementation
+//Connverting frequency to digital angular frequency
 function y = notchfilter(x, f0, fs, Q)
 
 w0 = 2*pi*f0/fs;
