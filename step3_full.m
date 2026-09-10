@@ -10,7 +10,7 @@ Q = 1.4;
 
 y = x;
 if useDenoise, y = spectralDenoise(y, fs, 0.5); end 
-if useNotch, y = notchFilter(y, notchFreq, fs, 30); end 
+if useNotch, y = notchfilter(y, notchFreq, fs, 30); end 
 
 for k = 1:numel(bands) 
     [b, a] = peakingEQ(bands(k), Q, gains(k), fs);

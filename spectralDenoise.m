@@ -1,4 +1,4 @@
-// Denoise 
+% Spectral Denoise (STFT Spectral Subtraction)
 function y = spectralDenoise(x, fs, noiseSeconds)
 
 if nargin < 3, noiseSeconds = 0.5; end 
