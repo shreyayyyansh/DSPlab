@@ -24,8 +24,8 @@ function AudioEqualizerGUI()
                    'CloseRequestFcn', @(src, event) onCloseFigure());
 
     % Main Grid: Top Controls, Middle Sliders, Bottom Waveform/Plots
-    mainGrid = uigridlayout(fig, [3, 1]);
-    mainGrid.RowHeight = {130, 240, '1x'};
+    mainGrid = uigridlayout(fig, [4, 1]);
+    mainGrid.RowHeight = {130, 85, 240, '1x'};
     mainGrid.BackgroundColor = [0.11 0.13 0.17];
 
     % =========================================================================
@@ -86,6 +86,62 @@ function AudioEqualizerGUI()
 
     lblStatus = uilabel(topGrid, 'Text', '● Ready. Audio loaded.', ...
                         'FontColor', [0.4 0.95 0.6], 'FontWeight', 'bold', 'FontSize', 11);
+
+    % =========================================================================
+    % SECTION 2: ADDITIONAL DSP FILTERS
+    % =========================================================================
+
+    filterPanel = uipanel(mainGrid, ...
+        'Title', 'Additional DSP Filters', ...
+        'BackgroundColor', [0.15 0.18 0.23], ...
+        'ForegroundColor', [0.9 0.92 0.95], ...
+        'FontWeight', 'bold', ...
+        'FontSize', 12);
+
+    filterGrid = uigridlayout(filterPanel, [1, 4]);
+
+    filterGrid.ColumnWidth = {'1.2x', '1x', '1.2x', '1x'};
+    filterGrid.Padding = [10 8 10 8];
+
+    % -------------------------------------------------------------------------
+    % HIGH-PASS FILTER
+    % -------------------------------------------------------------------------
+
+    tglHPF = uibutton(filterGrid, 'state', ...
+        'Text', 'HPF: OFF', ...
+        'Value', false, ...
+        'BackgroundColor', [0.32 0.35 0.40], ...
+        'FontColor', 'white', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 11, ...
+        'ValueChangedFcn', @(btn,event) onHPFToggled(btn));
+
+    ddHPF = uidropdown(filterGrid, ...
+        'Items', {'40 Hz','60 Hz','80 Hz','100 Hz'}, ...
+        'ItemsData', [40 60 80 100], ...
+        'Value', 80, ...
+        'FontWeight', 'bold', ...
+        'ValueChangedFcn', @(dd,event) onParamChanged());
+
+    % -------------------------------------------------------------------------
+    % LOW-PASS FILTER
+    % -------------------------------------------------------------------------
+
+    tglLPF = uibutton(filterGrid, 'state', ...
+        'Text', 'LPF: OFF', ...
+        'Value', false, ...
+        'BackgroundColor', [0.32 0.35 0.40], ...
+        'FontColor', 'white', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 11, ...
+        'ValueChangedFcn', @(btn,event) onLPFToggled(btn));
+
+    ddLPF = uidropdown(filterGrid, ...
+        'Items', {'2 kHz','2.5 kHz','3 kHz','3.5 kHz'}, ...
+        'ItemsData', [2000 2500 3000 3500], ...
+        'Value', 3500, ...
+        'FontWeight', 'bold', ...
+        'ValueChangedFcn', @(dd,event) onParamChanged());
 
     % =========================================================================
     % SECTION 2: EQUALIZER SLIDERS (5 BANDS)
@@ -199,6 +255,34 @@ function AudioEqualizerGUI()
         end
     end
 
+    % =========================================================================
+    % Update LPF cutoff options according to Nyquist frequency
+    % =========================================================================
+
+    nyquist = fs / 2;
+
+    if nyquist <= 5000
+
+        % Suitable for 8192 Hz audio
+        lpOptions = [2000 2500 3000 3500];
+
+    else
+
+        % Suitable for standard audio such as 44.1/48 kHz
+        lpOptions = [4000 6000 8000 10000 12000 15000];
+
+        % Remove frequencies above Nyquist
+        lpOptions = lpOptions(lpOptions < nyquist);
+
+    end
+
+    % Convert values into dropdown labels
+    ddLPF.ItemsData = lpOptions;
+    ddLPF.Items = strcat(string(lpOptions/1000), " kHz");
+
+    % Select highest valid cutoff
+    ddLPF.Value = lpOptions(end);
+
     function onLoadAudio()
         [file, path] = uigetfile({'*.wav;*.mp3;*.m4a;*.ogg', 'Audio Files (*.wav, *.mp3, *.m4a, *.ogg)'; '*.*', 'All Files'});
         if isequal(file, 0), return; end
@@ -271,6 +355,46 @@ function AudioEqualizerGUI()
                 end
             catch ME
                 warning('notchfilter: %s', ME.message);
+            end
+        end
+
+
+        % =========================================================================
+        % 3. HIGH-PASS FILTER
+        % =========================================================================
+        if tglHPF.Value
+            try
+                cutoffHPF = ddHPF.Value;
+
+                % Safety check: cutoff must be below Nyquist
+                if cutoffHPF >= fs/2
+                    cutoffHPF = fs/4;
+                end
+
+                y = highpassFilter(y, cutoffHPF, fs, 0.707);
+
+            catch ME
+                warning('highpassFilter: %s', ME.message);
+            end
+        end
+
+
+        % =========================================================================
+        % 4. LOW-PASS FILTER
+        % =========================================================================
+        if tglLPF.Value
+            try
+                cutoffLPF = ddLPF.Value;
+
+                % Safety check: cutoff must be below Nyquist
+                if cutoffLPF >= fs/2
+                    cutoffLPF = fs/4;
+                end
+
+                y = lowpassFilter(y, cutoffLPF, fs, 0.707);
+
+            catch ME
+                warning('lowpassFilter: %s', ME.message);
             end
         end
 
@@ -400,6 +524,40 @@ function AudioEqualizerGUI()
             btn.BackgroundColor = [0.32 0.35 0.4];
         end
         onParamChanged();
+    end
+
+    % =========================================================================
+    % HIGH-PASS FILTER TOGGLE
+    % =========================================================================
+    function onHPFToggled(btn)
+
+        if btn.Value
+            btn.Text = '✓ HPF: ON';
+            btn.BackgroundColor = [0.12 0.55 0.3];
+        else
+            btn.Text = '✗ HPF: OFF';
+            btn.BackgroundColor = [0.32 0.35 0.4];
+        end
+
+        onParamChanged();
+
+    end
+
+    % =========================================================================
+    % LOW-PASS FILTER TOGGLE
+    % =========================================================================
+    function onLPFToggled(btn)
+
+        if btn.Value
+            btn.Text = '✓ LPF: ON';
+            btn.BackgroundColor = [0.12 0.55 0.3];
+        else
+            btn.Text = '✗ LPF: OFF';
+            btn.BackgroundColor = [0.32 0.35 0.4];
+        end
+
+        onParamChanged();
+
     end
 
     function onLoopBtnToggled(btn)
