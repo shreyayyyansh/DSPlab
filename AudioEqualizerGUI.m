@@ -333,31 +333,44 @@ function AudioEqualizerGUI()
     end
 
     function processAudio()
-        if isempty(data.x_orig), return; end
-        y = data.x_orig;
-        fs = data.fs;
 
-        % 1. Spectral Denoise (STFT)
+        if isempty(data.x_orig)
+            return;
+        end
+
+        y = data.x_orig;
+        sampleRate = data.fs;
+
+        % =========================================================================
+        % 1. SPECTRAL DENOISE
+        % =========================================================================
         if tglDenoise.Value
             try
-                y = spectralDenoise(y, fs, 0.5);
+                y = spectralDenoise(y, sampleRate, 0.5);
             catch ME
                 warning('spectralDenoise: %s', ME.message);
             end
         end
 
-        % 2. Mains Hum & Buzz Notch Filter (50 Hz Fundamental + 100 Hz Harmonic Buzz)
+        % =========================================================================
+        % 2. MAINS HUM & BUZZ NOTCH FILTER
+        % =========================================================================
         if tglNotch.Value
             try
-                y = notchfilter(y, 50, fs, 30);  % 50 Hz Fundamental Hum
-                if fs > 250
-                    y = notchfilter(y, 100, fs, 30); % 100 Hz Harmonic Buzz
+                % 50 Hz Fundamental Hum
+                if 50 < sampleRate/2
+                    y = notchfilter(y, 50, sampleRate, 30);
                 end
+
+                % 100 Hz Harmonic Buzz
+                if 100 < sampleRate/2
+                    y = notchfilter(y, 100, sampleRate, 30);
+                end
+
             catch ME
                 warning('notchfilter: %s', ME.message);
             end
         end
-
 
         % =========================================================================
         % 3. HIGH-PASS FILTER
@@ -366,18 +379,17 @@ function AudioEqualizerGUI()
             try
                 cutoffHPF = ddHPF.Value;
 
-                % Safety check: cutoff must be below Nyquist
-                if cutoffHPF >= fs/2
-                    cutoffHPF = fs/4;
+                % Make sure cutoff is below Nyquist
+                if cutoffHPF >= sampleRate/2
+                    cutoffHPF = sampleRate/4;
                 end
 
-                y = highpassFilter(y, cutoffHPF, fs, 0.707);
+                y = highpassFilter(y, cutoffHPF, sampleRate, 0.707);
 
             catch ME
                 warning('highpassFilter: %s', ME.message);
             end
         end
-
 
         % =========================================================================
         % 4. LOW-PASS FILTER
@@ -386,35 +398,48 @@ function AudioEqualizerGUI()
             try
                 cutoffLPF = ddLPF.Value;
 
-                % Safety check: cutoff must be below Nyquist
-                if cutoffLPF >= fs/2
-                    cutoffLPF = fs/4;
+                % Make sure cutoff is below Nyquist
+                if cutoffLPF >= sampleRate/2
+                    cutoffLPF = sampleRate/4;
                 end
 
-                y = lowpassFilter(y, cutoffLPF, fs, 0.707);
+                y = lowpassFilter(y, cutoffLPF, sampleRate, 0.707);
 
             catch ME
                 warning('lowpassFilter: %s', ME.message);
             end
         end
 
-        % 3. 5-Band Parametric Peaking EQ (Q = 0.9 gives rich, audible bandwidth)
+        % =========================================================================
+        % 5. FIVE-BAND PARAMETRIC PEAKING EQ
+        % =========================================================================
         Q = 0.9;
+
         for i = 1:5
+
             g = sliders{i}.Value;
             f0 = data.bandFreqs(i);
-            if f0 < (fs / 2) && abs(g) > 0.1
-                [b, a] = peakingEQ(f0, Q, g, fs);
+
+            if f0 < (sampleRate/2) && abs(g) > 0.1
+
+                [b, a] = peakingEQ(f0, Q, g, sampleRate);
+
                 y = filter(b, a, y);
+
             end
         end
 
-        % 4. Smart Peak Limiter (Protects against digital distortion while preserving volume cuts/boosts)
+        % =========================================================================
+        % 6. SMART PEAK LIMITER
+        % =========================================================================
         peakVal = max(abs(y));
+
         if peakVal > 0.98
             y = y / peakVal * 0.98;
         end
+
         data.y_proc = y;
+
     end
 
     function processAndPlot()
@@ -422,10 +447,10 @@ function AudioEqualizerGUI()
         processAudio();
         y = data.y_proc;
         x = data.x_orig;
-        fs = data.fs;
+        sampleRate = data.fs;
 
         % Waveform Plot
-        t = (0:length(x)-1) / fs;
+        t = (0:length(x)-1) / sampleRate;
         cla(axWave);
         hold(axWave, 'on');
         plot(axWave, t, x, 'Color', [0.4 0.6 0.85 0.4], 'DisplayName', 'Original');
@@ -436,7 +461,7 @@ function AudioEqualizerGUI()
 
         % Frequency Spectrum (FFT)
         N = min(8192, length(x));
-        fAxis = (0:N/2-1) * (fs / N);
+        fAxis = (0:N/2-1) * (sampleRate / N);
         X_mag = 20*log10(abs(fft(x(1:N))) + eps);
         Y_mag = 20*log10(abs(fft(y(1:N))) + eps);
 
@@ -446,7 +471,7 @@ function AudioEqualizerGUI()
         plot(axSpec, fAxis, Y_mag(1:N/2), 'Color', [0.2 0.9 0.4], 'LineWidth', 1.2, 'DisplayName', 'Processed');
         hold(axSpec, 'off');
         legend(axSpec, 'TextColor', 'white', 'Color', [0.15 0.17 0.22]);
-        xlim(axSpec, [20, fs/2]);
+        xlim(axSpec, [20, sampleRate/2]);
     end
 
     function onPlayClean()
