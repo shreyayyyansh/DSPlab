@@ -1,7 +1,9 @@
-// Denoise 
-function y = spectralDenoise(x, fs, noiseSeconds)
+% Spectral Denoise (STFT Spectral Subtraction with Over-subtraction & Floor)
+function y = spectralDenoise(x, fs, noiseSeconds, alpha, beta)
 
 if nargin < 3, noiseSeconds = 0.5; end 
+if nargin < 4, alpha = 1.8; end   % Over-subtraction factor (1.0 = standard, 2.0+ = aggressive)
+if nargin < 5, beta = 0.01; end   % Spectral floor (prevents musical noise artifacts)
 x = x(:); 
 
 win = 1024; 
@@ -23,10 +25,15 @@ for s = 1:hop:(numel(x)-win)
     seg = x(s:s+win-1) .* w;
     S = fft(seg);
     mag = abs(S); ph = angle(S);
-    clean = max(mag - NF, 0.05*mag); 
+    clean = max(mag - alpha * NF, beta * mag); 
     rec = real(ifft(clean .* exp(1i*ph)));
     y(s:s+win-1) = y(s:s+win-1) + rec; 
 end
 y = y(1:numel(x));
-y = y / max(abs(y) + eps); 
+
+% Smart anti-clipping limiter (avoids amplifying silence/cuts back to 1.0)
+peakVal = max(abs(y));
+if peakVal > 0.95
+    y = y / peakVal * 0.95;
+end
 end
